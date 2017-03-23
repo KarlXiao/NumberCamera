@@ -41,9 +41,15 @@ def make_validation(data, labels, percent):
     train_labels = labels[0:breakpoint]
     valid_data = data[breakpoint:labels.shape[0], :, :, :]
     valid_labels = labels[breakpoint:labels.shape[0]]
+    train_mean = np.mean(train_data)
+    valid_mean = np.mean(valid_data)
     return train_data, train_labels, valid_data, valid_labels
 
 train_data, train_labels, valid_data, valid_labels = make_validation(train_data, train_labels, 0.8)
+print('Training dataset:', train_data.shape, train_labels.shape)
+print('Validation dataset:', valid_data.shape, valid_labels.shape)
+print('Test dataset:', test_data.shape, test_labels.shape)
+train_mean = np.mean(train_data, axis=0)
 
 pickle_file = 'data/number.pickle'
 
@@ -55,7 +61,9 @@ try:
         'valid_data': valid_data,
         'valid_labels': valid_labels,
         'test_data': test_data,
-        'test_labels':test_labels,
+        'test_labels': test_labels,
+        'train_mean': np.mean(train_data, axis=0),
+        'valid_mean': np.mean(valid_data, axis=0)
     }
     pickle.dump(save, f, pickle.HIGHEST_PROTOCOL)
     f.close()

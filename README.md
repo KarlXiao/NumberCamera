@@ -10,4 +10,4 @@ TensorFlow
 Android SDK & NDK (see https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/README.md)
 
 Data:
-Street View House Numbers (SVHN)
+Street View House Numbers (SVHN,http://ufldl.stanford.edu/housenumbers/)
