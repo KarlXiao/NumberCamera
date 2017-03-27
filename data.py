@@ -7,8 +7,8 @@ import numpy as np
 from six.moves import cPickle as pickle
 import matplotlib.pyplot as plt
 
-train_datapath = 'data/train_32x32.mat'
-test_datapath = 'data/test_32x32.mat'
+train_datapath = 'data/new_train_32x32.mat'
+test_datapath = 'data/new_test_32x32.mat'
 load_train = sio.loadmat(train_datapath)
 load_test = sio.loadmat(test_datapath)
 
