@@ -1,107 +1,135 @@
-"""
-train cnn model for number recognition
-"""
-import math
+import os
+from datetime import datetime
 import time
-import numpy as np
-from six.moves import cPickle as pickle
 import tensorflow as tf
+from meta import Meta
+from donkey import Donkey
 from SVHNmodel import Model
+from evaluator import Evaluator
 
-try:
-    with open('data/number.pickle', 'rb') as f:
-        pickle_file = pickle.load(f)
-        train_data = pickle_file['train_data']
-        train_labels = pickle_file['train_labels']
-        train_mean = pickle_file['train_mean']
-        valid_data = pickle_file['valid_data']
-        valid_labels = pickle_file['valid_labels']
-        valid_mean = pickle_file['valid_mean']
-        test_data = pickle_file['test_data']
-        test_labels = pickle_file['test_labels']
-        del pickle_file
-except Exception as e:
-    print('Unable to read data:', pickle_file, ':', e)
-    raise
-
-print('Training dataset:', train_data.shape, train_labels.shape)
-print('Validation dataset:', valid_data.shape, valid_labels.shape)
-print('Test dataset:', test_data.shape, test_labels.shape)
-
-image_size = 54
-num_channels = 3
-num_labels = 11
+tf.app.flags.DEFINE_string('data_dir', './data', 'Directory to read TFRecords files')
+tf.app.flags.DEFINE_string('train_logdir', './logs/train', 'Directory to write training logs')
+tf.app.flags.DEFINE_string('restore_checkpoint', None,
+                           'Path to restore checkpoint (without postfix), e.g. ./logs/train/model.ckpt-100')
+tf.app.flags.DEFINE_integer('batch_size', 32, 'Default 32')
+tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Default 1e-2')
+tf.app.flags.DEFINE_integer('patience', 100, 'Default 100, set -1 to train infinitely')
+tf.app.flags.DEFINE_integer('decay_steps', 10000, 'Default 10000')
+tf.app.flags.DEFINE_float('decay_rate', 0.9, 'Default 0.9')
+FLAGS = tf.app.flags.FLAGS
 
 
-def label_reformat(labels):
-    new_labels = np.ndarray([labels.shape[0], labels.shape[1], num_labels])
-    labels = np.reshape(labels, [labels.shape[0], labels.shape[1], 1])
-    for i in range(labels.shape[1]):
-        new_labels[:, i, :] = np.reshape((np.arange(num_labels) == labels[:, i, None]).astype(
-            np.float), [labels.shape[0], num_labels])
-    return new_labels
+def _train(path_to_train_tfrecords_file, num_train_examples, path_to_val_tfrecords_file, num_val_examples,
+           path_to_train_log_dir, path_to_restore_checkpoint_file, training_options):
+    batch_size = training_options['batch_size']
+    initial_patience = training_options['patience']
+    num_steps_to_show_loss = 100
+    num_steps_to_check = 1000
+
+    with tf.Graph().as_default():
+        image_batch, length_batch, digits_batch = Donkey.build_batch(path_to_train_tfrecords_file,
+                                                                     num_examples=num_train_examples,
+                                                                     batch_size=batch_size,
+                                                                     shuffled=True)
+        # length_logtis, digits_logits = Model.inference(image_batch, drop_rate=0.2)
+        length_logtis, digits_logits = Model.forward(image_batch, 0.8)
+
+        loss = Model.loss(length_logtis, digits_logits, length_batch, digits_batch)
+
+        global_step = tf.Variable(0, name='global_step', trainable=False)
+        learning_rate = tf.train.exponential_decay(training_options['learning_rate'], global_step=global_step,
+                                                   decay_steps=training_options['decay_steps'], decay_rate=training_options['decay_rate'], staircase=True)
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+        train_op = optimizer.minimize(loss, global_step=global_step)
+
+        tf.summary.image('image', image_batch)
+        tf.summary.scalar('loss', loss)
+        tf.summary.scalar('learning_rate', learning_rate)
+        summary = tf.summary.merge_all()
+
+        with tf.Session() as sess:
+            summary_writer = tf.summary.FileWriter(path_to_train_log_dir, sess.graph)
+            evaluator = Evaluator(os.path.join(path_to_train_log_dir, 'eval/val'))
+
+            sess.run(tf.global_variables_initializer())
+            coord = tf.train.Coordinator()
+            threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+
+            saver = tf.train.Saver()
+            if path_to_restore_checkpoint_file is not None:
+                assert tf.train.checkpoint_exists(path_to_restore_checkpoint_file), \
+                    '%s not found' % path_to_restore_checkpoint_file
+                saver.restore(sess, path_to_restore_checkpoint_file)
+                print('Model restored from file: %s' % path_to_restore_checkpoint_file)
+
+            print('Start training')
+            patience = initial_patience
+            best_accuracy = 0.0
+            duration = 0.0
+
+            while True:
+                start_time = time.time()
+                _, loss_val, summary_val, global_step_val, learning_rate_val = sess.run([train_op, loss, summary, global_step, learning_rate])
+                duration += time.time() - start_time
+
+                if global_step_val % num_steps_to_show_loss == 0:
+                    examples_per_sec = batch_size * num_steps_to_show_loss / duration
+                    duration = 0.0
+                    print ('=> %s: step %d, loss = %f (%.1f examples/sec)' % (
+                        datetime.now(), global_step_val, loss_val, examples_per_sec))
+
+                if global_step_val % num_steps_to_check != 0:
+                    continue
+
+                summary_writer.add_summary(summary_val, global_step=global_step_val)
+
+                print ('=> Evaluating on validation dataset...')
+                path_to_latest_checkpoint_file = saver.save(sess, os.path.join(path_to_train_log_dir, 'latest.ckpt'))
+                accuracy = evaluator.evaluate(path_to_latest_checkpoint_file, path_to_val_tfrecords_file,
+                                              num_val_examples,
+                                              global_step_val)
+                print ('==> accuracy = %f, best accuracy %f' % (accuracy, best_accuracy))
+
+                if accuracy > best_accuracy:
+                    path_to_checkpoint_file = saver.save(sess, os.path.join(path_to_train_log_dir, 'model.ckpt'),
+                                                         global_step=global_step_val)
+                    print ('=> Model saved to file: %s' % path_to_checkpoint_file)
+                    patience = initial_patience
+                    best_accuracy = accuracy
+                else:
+                    patience -= 1
+
+                print ('=> patience = %d' % patience)
+                if patience == 0:
+                    break
+
+            coord.request_stop()
+            coord.join(threads)
+            print ('Finished')
 
 
-train_labels = label_reformat(train_labels)
-valid_labels = label_reformat(valid_labels)
-test_labels = label_reformat(test_labels)
+def main(_):
+    path_to_train_tfrecords_file = os.path.join(FLAGS.data_dir, 'train.tfrecords')
+    path_to_val_tfrecords_file = os.path.join(FLAGS.data_dir, 'val.tfrecords')
+    path_to_tfrecords_meta_file = os.path.join(FLAGS.data_dir, 'meta.json')
+    path_to_train_log_dir = FLAGS.train_logdir
+    path_to_restore_checkpoint_file = FLAGS.restore_checkpoint
+    training_options = {
+        'batch_size': FLAGS.batch_size,
+        'learning_rate': FLAGS.learning_rate,
+        'patience': FLAGS.patience,
+        'decay_steps': FLAGS.decay_steps,
+        'decay_rate': FLAGS.decay_rate
+    }
 
-print('Training dataset:', train_data.shape, train_labels.shape)
-print('Validation dataset:', valid_data.shape, valid_labels.shape)
-print('Test dataset:', test_data.shape, test_labels.shape)
+    meta = Meta()
+    meta.load(path_to_tfrecords_meta_file)
 
-with tf.Graph().as_default():
-    # input
-    tf_data = tf.placeholder(
-        tf.float32, shape=[None, image_size, image_size, num_channels])
-    tf_digits = tf.placeholder(tf.float32, shape=[None, num_labels])
-    tf_length = tf.placeholder(tf.float32, shape=[None, 1])
-    dropout = tf.placeholder(tf.float32)
+    _train(path_to_train_tfrecords_file, meta.num_train_examples,
+           path_to_val_tfrecords_file, meta.num_val_examples,
+           path_to_train_log_dir, path_to_restore_checkpoint_file,
+           training_options)
 
-    digits_length, digits = Model.forward(tf_data, dropout)
-    loss = Model.loss(digits_length, digits, tf_length, tf_digits)
 
-    # optimizer
-    global_step = tf.Variable(0, name='global_step', trainable=False)
-    learning_rate = tf.train.exponential_decay(
-        0.01, global_step, 100, 0.9, staircase=True)
-
-    optimizer = tf. train.GradientDescentOptimizer(
-        learning_rate).minimize(loss, global_step=global_step)
-
-    tf.summary.image('image', tf_data)
-    tf.summary.scalar('Training loss', loss)
-    tf.summary.scalar('Learning rate', learning_rate)
-    merged = tf.summary.merge_all()
-    writer = tf.summary.FileWriter('./logs')
-    saver = tf.train.Saver()
-
-num_steps = 20000
-batch_size = 256
-
-with tf.Session() as session:
-    session.run(tf.global_variables_initializer())
-    writer.add_graph(graph=session.graph)
-    print('Initialized')
-    start_time = time.time()
-    for step in range(num_steps):
-        train_offset = (step * batch_size) % (train_data.shape[0] - batch_size)
-        batch_data = train_data[train_offset:(train_offset + batch_size), :, :, :] - train_mean
-        batch_label = train_labels[train_offset:(train_offset + batch_size), :, :]
-        feed_dict = {tf_data: batch_data,tf_digits: batch_label, dropout: 0.2}
-        _, l, summary = session.run([optimizer, loss, merged], feed_dict=feed_dict)
-        writer.add_summary(summary, step)
-        if step % 1000 == 0:
-            print('Batch loss at step %d: %f' % (step, l))
-    print('Training costs %f seconds.' % (time.time() - start_time))
-    saver.save(session, './models/cnn_numbercamera.tfmodel')
-
-with tf.Session() as session:
-    saver.restore(session, './models/cnn_numbercamera.tfmodel')
-    test_accuracy = 0
-    for i in range(math.ceil(test_data.shape[0] / batch_size)):
-        test_offset = (i * batch_size) % (test_data.shape[0] - batch_size)
-        feed_dict = {tf_data: test_data[test_offset:(test_offset + batch_size), :, :, :] - train_mean,
-                     tf_digits: test_labels[test_offset:(test_offset + batch_size), :, :], dropout: .2}
-        print('Test accuray: %f%%' % (100 * test_accuracy /
-                                      math.floor(test_data.shape[0] / batch_size)))
+if __name__ == '__main__':
+    tf.app.run(main=main)

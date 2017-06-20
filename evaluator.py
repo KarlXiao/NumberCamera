@@ -1,4 +1,5 @@
 import tensorflow as tf
+from donkey import Donkey
 from SVHNmodel import Model
 
 
@@ -16,7 +17,8 @@ class Evaluator(object):
                                                                          num_examples=num_examples,
                                                                          batch_size=batch_size,
                                                                          shuffled=False)
-            length_logits, digits_logits = Model.forward(image_batch)
+            # length_logits, digits_logits = Model.inference(image_batch, drop_rate=0.0)
+            length_logits, digits_logits = Model.forward(image_batch, 1.0)
             length_predictions = tf.argmax(length_logits, axis=1)
             digits_predictions = tf.argmax(digits_logits, axis=2)
 
@@ -49,7 +51,7 @@ class Evaluator(object):
                 restorer = tf.train.Saver()
                 restorer.restore(sess, path_to_checkpoint)
 
-                for _ in range(num_batches):
+                for _ in range(int(num_batches)):
                     sess.run(update_accuracy)
 
                 accuracy_val, summary_val = sess.run([accuracy, summary])
