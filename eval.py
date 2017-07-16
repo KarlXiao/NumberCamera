@@ -21,7 +21,7 @@ def _eval(path_to_checkpoint_dir, path_to_eval_tfrecords_file, num_eval_examples
 
         accuracy = evaluator.evaluate(path_to_checkpoint, path_to_eval_tfrecords_file, num_eval_examples,
                                       global_step_val)
-        print 'Evaluate %s on %s, accuracy = %f' % (path_to_checkpoint, path_to_eval_tfrecords_file, accuracy)
+        print('Evaluate %s on %s, accuracy = %f' % (path_to_checkpoint, path_to_eval_tfrecords_file, accuracy))
 
 
 def main(_):

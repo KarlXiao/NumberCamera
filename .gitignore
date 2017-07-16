@@ -1,5 +1,5 @@
 .vscode/
 logs/
-models/
+model/
 data/
 __pycache__/
