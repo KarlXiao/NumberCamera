@@ -48,7 +48,8 @@ def _train(path_to_train_tfrecords_file, num_train_examples, path_to_val_tfrecor
         summary = tf.summary.merge_all()
 
         with tf.Session() as sess:
-            summary_writer = tf.summary.FileWriter(path_to_train_log_dir, sess.graph)
+            summary_writer = tf.summary.FileWriter(path_to_train_log_dir)
+            summary_writer.add_graph(graph = sess.graph)
             evaluator = Evaluator(os.path.join(path_to_train_log_dir, 'eval/val'))
 
             sess.run(tf.global_variables_initializer())
