@@ -3,7 +3,7 @@
 
 **Source**:[Multi-digit Number Recognition from Street View Imagery using Deep Convolutional Neural Networks](https://arxiv.org/pdf/1312.6082.pdf)
 
-##Requirements##
+## Requirements ##
 1. Python 3.5/Python 2.7
 2. TensorFlow
 3. h5py
@@ -51,4 +51,4 @@
 The bounding box information are stored in digitStruct.mat instead of drawn directly on the images in the dataset.Each tar.gz file contains the orignal images in png format, together with a digitStruct.mat file.In our program, we use **h5py.File** to read the data in .mat format.
 
 ## Results ##
-### **You can view the README.m file in the main folder.** ###
+### **You can view the README.md file in the main folder.** ###
