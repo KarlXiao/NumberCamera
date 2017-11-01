@@ -13,7 +13,7 @@ tf.app.flags.DEFINE_string('restore_checkpoint', None,
                            'Path to restore checkpoint (without postfix), e.g. ./logs/train/model.ckpt-100')
 tf.app.flags.DEFINE_integer('batch_size', 32, 'Default 32')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Default 1e-2')
-tf.app.flags.DEFINE_integer('patience', 100, 'Default 100, set -1 to train infinitely')
+tf.app.flags.DEFINE_integer('patience', 20, 'Default 100, set -1 to train infinitely')
 tf.app.flags.DEFINE_integer('decay_steps', 10000, 'Default 10000')
 tf.app.flags.DEFINE_float('decay_rate', 0.9, 'Default 0.9')
 FLAGS = tf.app.flags.FLAGS
@@ -107,10 +107,6 @@ def _train(path_to_train_tfrecords_file, num_train_examples, path_to_val_tfrecor
             coord.request_stop()
             coord.join(threads)
             print ('Finished')
-        
-        output_graph_def = tf.graph_util.convert_variables_to_constants(sess, sess.graph_def, 'output')
-        with tf.gfile.FastGFile('./model/NumberCamera.pb', 'wb') as f:
-            f.write(output_graph_def.SerializeToString())
 
 def main(_):
     path_to_train_tfrecords_file = os.path.join(FLAGS.data_dir, 'train.tfrecords')

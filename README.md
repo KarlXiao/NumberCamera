@@ -13,7 +13,7 @@
         In Ubuntu:
 		$ sudo pip3 install h5py
 
-4. Pillow, Jupyter Notebook etc.
+4. Pillow, matplotlib etc.
 5. Android env
 
     >Android SDK & NDK (see [https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/README.md))
@@ -66,30 +66,9 @@ The bounding box information are stored in digitStruct.mat instead of drawn dire
 5. Visualize
 
 		> tensorboard --logdir=./logs		
-6. (Optional) Perform actual testing of other images
+6. demo.py
 
-		Open 'Test_sample.ipynb' in Jupyter notebook
-		Open 'Test_outside_sample.ipynb' in Jupyter notebook
-		Above all,you can see the results you want.
-### Using h5py data processing to do the training ###
-1. Convert to h5py format
-
-		> cd NumberCamber_Based_h5py
-		Make sure the data folder is under the path.
-		> python convert_to_h5py.py
-2. (Optional)Try to read h5py file and take a glance at original images.
-
-		Open "read_h5py_test.ipynb"
-3. Train
-
-		> python train.py
-4. Evaluate
-
-		> python eval.py
-
-5. Visualize
-
-		> tensorboard --logdir=./logs
+		demo on test set. Modify the code before use. Please note that input data should be [batchsize, 64, 64, 3].
 ## Results ##
 ### Graph ###
 <img src="./images/graph.png" width=800 height=800></img>
