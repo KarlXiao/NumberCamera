@@ -3,6 +3,8 @@
 
 **Source**:[Multi-digit Number Recognition from Street View Imagery using Deep Convolutional Neural Networks](https://arxiv.org/pdf/1312.6082.pdf)
 
+If you like this project, you can reward some coins to this address:``0x388Bf5a30B66e79Fb16162E16Dc45c308C2C7f02``
+
 ## Requirements ##
 1. Python 3.5/Python 2.7
 2. TensorFlow
