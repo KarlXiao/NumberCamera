@@ -14,7 +14,7 @@ parser.add_argument('--epoch', type=int, default=300, help='number of training e
 parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--weight_decay', default=0, type=float, help='weight decay')
 parser.add_argument('--lr_decay', default=10, type=int, help='learning rate decay rate')
-parser.add_argument('--gamma', default=0.5, type=float, help='gamma update for optimizer')
+parser.add_argument('--gamma', default=0.9, type=float, help='gamma update for optimizer')
 parser.add_argument('--num_workers', default=1, type=int, help='number of workers used in data loading')
 parser.add_argument('--log', default='default', type=str, help='training log')
 
@@ -66,7 +66,7 @@ def train():
 
             average_loss = ((average_loss * iteration) + loss.item()) / (iteration + 1)
 
-            writer.add_scalar('Train/cls_loss', average_loss, (epoch - 1) * len(data_loader) + iteration)
+            writer.add_scalar('Train/loss', loss.item(), epoch * len(data_loader) + iteration)
 
             count = round(iteration / len(data_loader) * 50)
             sys.stdout.write('[Epoch {}], {}/{}: [{}{}] Avg_loc loss: {:.4}\r'.format(

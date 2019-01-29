@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 class NumberNet(nn.Module):
     
@@ -36,42 +36,41 @@ class NumberNet(nn.Module):
         self.digit5 = nn.Linear(in_features=3072, out_features=11, bias=True)
 
         self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.relu = nn.ReLU(inplace=True)
 
         self._init_weight()
 
     def forward(self, input):
         conv = self.conv1(input)
         bn = self.bn1(conv)
-        relu = self.max_pool(self.relu(bn))
+        relu = self.max_pool(F.relu(bn, inplace=True))
 
         conv = self.conv2(relu)
         bn = self.bn2(conv)
-        relu = self.relu(bn)
+        relu = F.relu(bn, inplace=True)
 
         conv = self.conv3(relu)
         bn = self.bn3(conv)
-        relu = self.max_pool(self.relu(bn))
+        relu = self.max_pool(F.relu(bn, inplace=True))
 
         conv = self.conv4(relu)
         bn = self.bn4(conv)
-        relu = self.relu(bn)
+        relu = F.relu(bn, inplace=True)
 
         conv = self.conv5(relu)
         bn = self.bn5(conv)
-        relu = self.max_pool(self.relu(bn))
+        relu = self.max_pool(F.relu(bn, inplace=True))
 
         conv = self.conv6(relu)
         bn = self.bn6(conv)
-        relu = self.relu(bn)
+        relu = F.relu(bn, inplace=True)
 
         conv = self.conv7(relu)
         bn = self.bn7(conv)
-        relu = self.max_pool(self.relu(bn))
+        relu = self.max_pool(F.relu(bn, inplace=True))
 
         conv = self.conv8(relu)
         bn = self.bn8(conv)
-        relu = self.relu(bn)
+        relu = F.relu(bn, inplace=True)
 
         reshape = torch.reshape(relu, (relu.shape[0], -1))
 
