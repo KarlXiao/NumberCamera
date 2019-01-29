@@ -1,6 +1,9 @@
 .vscode/
+.idea/
 logs/
 model/
 data/
 __pycache__/
 .ipynb_checkpoints/
+
+*.pth

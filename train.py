@@ -1,135 +1,95 @@
-import os
-from datetime import datetime
-import time
-import tensorflow as tf
-from meta import Meta
-from donkey import Donkey
-from SVHNmodel import Model
-from evaluator import Evaluator
-
-tf.app.flags.DEFINE_string('data_dir', './data', 'Directory to read TFRecords files')
-tf.app.flags.DEFINE_string('train_logdir', './logs/train', 'Directory to write training logs')
-tf.app.flags.DEFINE_string('restore_checkpoint', None,
-                           'Path to restore checkpoint (without postfix), e.g. ./logs/train/model.ckpt-100')
-tf.app.flags.DEFINE_integer('batch_size', 32, 'Default 32')
-tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Default 1e-2')
-tf.app.flags.DEFINE_integer('patience', 20, 'Default 100, set -1 to train infinitely')
-tf.app.flags.DEFINE_integer('decay_steps', 10000, 'Default 10000')
-tf.app.flags.DEFINE_float('decay_rate', 0.9, 'Default 0.9')
-FLAGS = tf.app.flags.FLAGS
+import sys
+import argparse
+from core import *
+from tensorboardX import SummaryWriter
+from torch.autograd import Variable
 
 
-def _train(path_to_train_tfrecords_file, num_train_examples, path_to_val_tfrecords_file, num_val_examples,
-           path_to_train_log_dir, path_to_restore_checkpoint_file, training_options):
-    batch_size = training_options['batch_size']
-    initial_patience = training_options['patience']
-    num_steps_to_show_loss = 100
-    num_steps_to_check = 1000
+parser = argparse.ArgumentParser()
+parser.add_argument('--save_dir', type=str, default='checkpoint', help='directory to save checkpoint')
+parser.add_argument('--resume', type=str, default=None, help='model directory for finetune training')
+parser.add_argument('--txt_file', default='data/train.txt', type=str, help='path to mat file')
+parser.add_argument('--batch_size', type=int, default=128, help='training batch size')
+parser.add_argument('--epoch', type=int, default=300, help='number of training epoch')
+parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+parser.add_argument('--weight_decay', default=0, type=float, help='weight decay')
+parser.add_argument('--lr_decay', default=10, type=int, help='learning rate decay rate')
+parser.add_argument('--gamma', default=0.5, type=float, help='gamma update for optimizer')
+parser.add_argument('--num_workers', default=1, type=int, help='number of workers used in data loading')
+parser.add_argument('--log', default='default', type=str, help='training log')
 
-    with tf.Graph().as_default():
-        image_batch, length_batch, digits_batch = Donkey.build_batch(path_to_train_tfrecords_file,
-                                                                     num_examples=num_train_examples,
-                                                                     batch_size=batch_size,
-                                                                     shuffled=True)
-        # length_logtis, digits_logits = Model.inference(image_batch, drop_rate=0.2)
-        length_logtis, digits_logits = Model.forward(image_batch, 0.8)
+args = parser.parse_args()
 
-        loss = Model.loss(length_logtis, digits_logits, length_batch, digits_batch)
 
-        global_step = tf.Variable(0, name='global_step', trainable=False)
-        learning_rate = tf.train.exponential_decay(training_options['learning_rate'], global_step=global_step,
-                                                   decay_steps=training_options['decay_steps'], decay_rate=training_options['decay_rate'], staircase=True)
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-        train_op = optimizer.minimize(loss, global_step=global_step)
+def train():
 
-        tf.summary.image('image', image_batch)
-        tf.summary.scalar('loss', loss)
-        tf.summary.scalar('learning_rate', learning_rate)
-        summary = tf.summary.merge_all()
+    best_loss = np.inf
+    writer = SummaryWriter(os.path.join('logs', args.log))
+    dummy_input = torch.rand(1, 3, 64, 64)
 
-        with tf.Session() as sess:
-            summary_writer = tf.summary.FileWriter(path_to_train_log_dir)
-            summary_writer.add_graph(graph = sess.graph)
-            evaluator = Evaluator(os.path.join(path_to_train_log_dir, 'eval/val'))
+    train_dataset = SVHNLoader(args.txt_file)
 
-            sess.run(tf.global_variables_initializer())
-            coord = tf.train.Coordinator()
-            threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    data_loader = data.DataLoader(train_dataset, args.batch_size, num_workers=args.num_workers,
+                                  collate_fn=detection_collate, shuffle=True)
 
-            saver = tf.train.Saver()
-            if path_to_restore_checkpoint_file is not None:
-                assert tf.train.checkpoint_exists(path_to_restore_checkpoint_file), \
-                    '%s not found' % path_to_restore_checkpoint_file
-                saver.restore(sess, path_to_restore_checkpoint_file)
-                print('Model restored from file: %s' % path_to_restore_checkpoint_file)
+    model = NumberNet()
+    writer.add_graph(model, (dummy_input, ))
 
-            print('Start training')
-            patience = initial_patience
-            best_accuracy = 0.0
-            duration = 0.0
+    if args.resume:
+        print('Resuming training, loading {}...'.format(args.resume))
+        model.load_weights(args.resume)
 
-            while True:
-                start_time = time.time()
-                _, loss_val, summary_val, global_step_val, learning_rate_val = sess.run([train_op, loss, summary, global_step, learning_rate])
-                duration += time.time() - start_time
+    model = model.cuda()
 
-                if global_step_val % num_steps_to_show_loss == 0:
-                    examples_per_sec = batch_size * num_steps_to_show_loss / duration
-                    duration = 0.0
-                    print ('=> %s: step %d, loss = %f (%.1f examples/sec)' % (
-                        datetime.now(), global_step_val, loss_val, examples_per_sec))
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_decay, args.gamma)
+    #######################################################################################
 
-                if global_step_val % num_steps_to_check != 0:
-                    continue
+    for epoch in np.arange(args.epoch):
 
-                summary_writer.add_summary(summary_val, global_step=global_step_val)
+        writer.add_scalar('Train/learning rate', optimizer.param_groups[0]['lr'], epoch)
 
-                print ('=> Evaluating on validation dataset...')
-                path_to_latest_checkpoint_file = saver.save(sess, os.path.join(path_to_train_log_dir, 'latest.ckpt'))
-                accuracy = evaluator.evaluate(path_to_latest_checkpoint_file, path_to_val_tfrecords_file,
-                                              num_val_examples,
-                                              global_step_val)
-                print ('==> accuracy = %f, best accuracy %f' % (accuracy, best_accuracy))
+        average_loss = 0.0
 
-                if accuracy > best_accuracy:
-                    path_to_checkpoint_file = saver.save(sess, os.path.join(path_to_train_log_dir, 'model.ckpt'),
-                                                         global_step=global_step_val)
-                    print ('=> Model saved to file: %s' % path_to_checkpoint_file)
-                    patience = initial_patience
-                    best_accuracy = accuracy
-                else:
-                    patience -= 1
+        for iteration, (images, labels, length) in enumerate(data_loader):
 
-                print ('=> patience = %d' % patience)
-                if patience == 0:
-                    break
+            images = Variable(images.cuda())
+            labels = Variable(labels.cuda())
+            length = Variable(length.cuda())
 
-            coord.request_stop()
-            coord.join(threads)
-            print ('Finished')
+            l, digits = model(images)
 
-def main(_):
-    path_to_train_tfrecords_file = os.path.join(FLAGS.data_dir, 'train.tfrecords')
-    path_to_val_tfrecords_file = os.path.join(FLAGS.data_dir, 'val.tfrecords')
-    path_to_tfrecords_meta_file = os.path.join(FLAGS.data_dir, 'meta.json')
-    path_to_train_log_dir = FLAGS.train_logdir
-    path_to_restore_checkpoint_file = FLAGS.restore_checkpoint
-    training_options = {
-        'batch_size': FLAGS.batch_size,
-        'learning_rate': FLAGS.learning_rate,
-        'patience': FLAGS.patience,
-        'decay_steps': FLAGS.decay_steps,
-        'decay_rate': FLAGS.decay_rate
-    }
+            optimizer.zero_grad()
+            loss = criterion(l, digits, length, labels)
+            loss.backward()
+            optimizer.step()
 
-    meta = Meta()
-    meta.load(path_to_tfrecords_meta_file)
+            average_loss = ((average_loss * iteration) + loss.item()) / (iteration + 1)
 
-    _train(path_to_train_tfrecords_file, meta.num_train_examples,
-           path_to_val_tfrecords_file, meta.num_val_examples,
-           path_to_train_log_dir, path_to_restore_checkpoint_file,
-           training_options)
+            writer.add_scalar('Train/cls_loss', average_loss, (epoch - 1) * len(data_loader) + iteration)
+
+            count = round(iteration / len(data_loader) * 50)
+            sys.stdout.write('[Epoch {}], {}/{}: [{}{}] Avg_loc loss: {:.4}\r'.format(
+                epoch, iteration + 1, len(data_loader),'#' * count, ' ' * (50 - count), average_loss))
+
+        sys.stdout.write('\n')
+
+        writer.add_scalar('Train/Global_avg_loss', average_loss, epoch)
+
+        for key, param in model.named_parameters():
+            writer.add_histogram(key, param.clone(), epoch)
+
+        if best_loss > average_loss:
+            best_loss = average_loss
+            torch.save(model.state_dict(), os.path.join(args.save_dir, args.log, 'NumberNet_{}.pth'.format(epoch)))
+            print('Epoch: {} model is saved'.format(epoch))
+
+        scheduler.step()
 
 
 if __name__ == '__main__':
-    tf.app.run(main=main)
+
+    if not os.path.exists(os.path.join(args.save_dir, args.log)):
+        os.makedirs(os.path.join(args.save_dir, args.log))
+
+    train()
