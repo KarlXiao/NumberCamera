@@ -3,19 +3,20 @@ import argparse
 from core import *
 from tensorboardX import SummaryWriter
 from torch.autograd import Variable
+import numpy as np
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_dir', type=str, default='checkpoint', help='directory to save checkpoint')
-parser.add_argument('--resume', type=str, default=None, help='model directory for finetune training')
+parser.add_argument('--resume', type=str, default=None, help='model32 directory for finetune training')
 parser.add_argument('--txt_file', default='data/train.txt', type=str, help='path to mat file')
-parser.add_argument('--batch_size', type=int, default=128, help='training batch size')
-parser.add_argument('--epoch', type=int, default=300, help='number of training epoch')
-parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+parser.add_argument('--batch_size', type=int, default=32, help='training batch size')
+parser.add_argument('--epoch', type=int, default=3000, help='number of training epoch')
+parser.add_argument('--lr', type=float, default=1e-2, help='learning rate')
 parser.add_argument('--weight_decay', default=0, type=float, help='weight decay')
-parser.add_argument('--lr_decay', default=10, type=int, help='learning rate decay rate')
+parser.add_argument('--lr_decay', default=20, type=int, help='learning rate decay rate')
 parser.add_argument('--gamma', default=0.9, type=float, help='gamma update for optimizer')
-parser.add_argument('--num_workers', default=1, type=int, help='number of workers used in data loading')
+parser.add_argument('--num_workers', default=4, type=int, help='number of workers used in data loading')
 parser.add_argument('--log', default='default', type=str, help='training log')
 
 args = parser.parse_args()
@@ -41,7 +42,7 @@ def train():
 
     model = model.cuda()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_decay, args.gamma)
     #######################################################################################
 

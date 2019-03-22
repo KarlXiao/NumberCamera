@@ -6,15 +6,7 @@
 ## Requirements ##
 1. Python 3.6
 2. Pytorch
-3. h5py
-
-        In Windows:
-        > pip3 install h5py
-        In Ubuntu:
-		$ sudo pip3 install h5py
-
-4. Pillow, matplotlib etc.
-5. Street dataset 
+3. Street dataset 
 
     >View House Numbers (SVHN [http://ufldl.stanford.edu/housenumbers/](http://ufldl.stanford.edu/housenumbers/))
 ## Results ##

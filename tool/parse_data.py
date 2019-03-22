@@ -5,8 +5,8 @@ import os
 import cv2
 
 parser = argparse.ArgumentParser('scrip to check SVHN data')
-parser.add_argument('--mat_file', default='data/SVHN/train/digitStruct.mat', type=str, help='path to mat file')
-parser.add_argument('--txt', default='data/train.txt', type=str, help='text path to save')
+parser.add_argument('--mat_file', default='data/SVHN/test/digitStruct.mat', type=str, help='path to mat file')
+parser.add_argument('--txt', default='data/test.txt', type=str, help='text path to save')
 
 args = parser.parse_args()
 
@@ -42,11 +42,16 @@ def run():
                 continue
             left, top, width, height = map(lambda x: [int(i) for i in x],
                                            [attrs['left'], attrs['top'], attrs['width'], attrs['height']])
-            left, top, right, bottom = (min(left), min(top), max(map(lambda x, y: x + y, left, width)),
+            left, top, right, bottom = (min(left), min(top),
+                                        max(map(lambda x, y: x + y, left, width)),
                                         max(map(lambda x, y: x + y, top, height)))
-            max_side = max(right - left, bottom - top)
+            width, height = right - left, bottom - top
+            left, top = (left - 0.15 * width, top - 0.15 * height)
+            left, top = max(left, 0), max(top, 0)
+            max_side = 1.3 * max(width, height)
 
-            save.write('{} {} {} {} {} {}'.format(im_path, left, top, left+max_side, top+max_side, length))
+            save.write('{} {} {} {} {} {}'.format(im_path, int(left), int(top),
+                                                  int(left + max_side), int(top + max_side), length))
             for digit in labels:
                 if digit == 10:
                     digit = 0

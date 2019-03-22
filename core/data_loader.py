@@ -1,7 +1,6 @@
 import torch
 import torch.utils.data as data
 import cv2
-import numpy as np
 
 
 class SVHNLoader(data.Dataset):
@@ -22,10 +21,8 @@ class SVHNLoader(data.Dataset):
         length = int(data[5])
         for i in range(length):
             labels[i] = int(data[6+i])
-        # print('leng:{}, labels:{}'.format(length, labels))
-        # cv2.imshow('cv', img)
-        # cv2.waitKey(0)
-        return torch.from_numpy(img / 255.0).permute(2, 0, 1).float(), torch.tensor(labels).long(), length
+
+        return torch.from_numpy(img / 255.0).permute(2, 0, 1).float(), labels.clone().detach().long(), length
 
     def __len__(self):
         r"""
