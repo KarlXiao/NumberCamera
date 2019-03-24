@@ -5,8 +5,8 @@ from torch.autograd import Variable
 import numpy as np
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--resume', type=str, default='checkpoint/default/NumberNet_15.pth', help='model directory for finetune training')
-parser.add_argument('--txt_file', default='data/train.txt', type=str, help='path to mat file')
+parser.add_argument('--resume', type=str, required=True, help='model directory for finetune training')
+parser.add_argument('--txt_file', required=True, type=str, help='path to mat file')
 parser.add_argument('--batch_size', type=int, default=1, help='training batch size')
 parser.add_argument('--num_workers', default=1, type=int, help='number of workers used in data loading')
 
@@ -20,6 +20,7 @@ def val():
                                   collate_fn=detection_collate, shuffle=True)
 
     model = NumberNet()
+    model.eval()
 
     if args.resume:
         print('Resuming training, loading {}...'.format(args.resume))

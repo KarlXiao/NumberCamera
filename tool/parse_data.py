@@ -5,8 +5,7 @@ import os
 import cv2
 
 parser = argparse.ArgumentParser('scrip to check SVHN data')
-parser.add_argument('--mat_file', default='data/SVHN/test/digitStruct.mat', type=str, help='path to mat file')
-parser.add_argument('--txt', default='data/test.txt', type=str, help='text path to save')
+parser.add_argument('--type', required=True, type=str, help='data set to parse')
 
 args = parser.parse_args()
 
@@ -21,12 +20,12 @@ def read_list(path):
 
 
 def run():
-    image_path = os.path.split(args.mat_file)[0]
+    image_path = os.path.split('data/SVHN/{}/digitStruct.mat'.format(args.type))[0]
     im_list = read_list(image_path)
 
-    f = h5py.File(args.mat_file, 'r')
+    f = h5py.File('data/SVHN/{}/digitStruct.mat'.format(args.type), 'r')
     data = f['digitStruct']['bbox']
-    with open(args.txt, 'w') as save:
+    with open('data/{}.txt'.format(args.type), 'w') as save:
         for idx in tqdm.trange(len(im_list)):
             im_path = im_list[idx]
             item = data[int(os.path.basename(im_path).strip('.png'))-1].item()
@@ -45,7 +44,9 @@ def run():
             left, top, right, bottom = (min(left), min(top),
                                         max(map(lambda x, y: x + y, left, width)),
                                         max(map(lambda x, y: x + y, top, height)))
-            width, height = right - left, bottom - top
+            center_x, center_y, max_size = ((left + right) / 2.0, (top + bottom) / 2.0,
+                                            max(right-left, bottom - top))
+            left, top, width, height = (center_x - max_size / 2.0, center_y - max_size / 2.0, max_size, max_size)
             left, top = (left - 0.15 * width, top - 0.15 * height)
             left, top = max(left, 0), max(top, 0)
             max_side = 1.3 * max(width, height)

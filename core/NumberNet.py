@@ -3,78 +3,108 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+class STN(nn.Module):
+
+    def __init__(self):
+        super(STN, self).__init__()
+
+        # Spatial transformer localization-network
+        self.localization = nn.Sequential(
+            nn.Conv2d(3, 8, kernel_size=7),
+            nn.MaxPool2d(2, stride=2),
+            nn.ReLU(True),
+            nn.Conv2d(8, 10, kernel_size=5),
+            nn.MaxPool2d(2, stride=2),
+            nn.ReLU(True)
+        )
+
+        # Regressor for the 3 * 2 affine matrix
+        self.fc_loc = nn.Sequential(
+            nn.Linear(10 * 12 * 12, 32),
+            nn.ReLU(True),
+            nn.Linear(32, 3 * 2)
+        )
+
+    def forward(self, input):
+        xs = self.localization(input)
+        xs = xs.view(-1, 10 * 12 * 12)
+        theta = self.fc_loc(xs)
+        theta = theta.view(-1, 2, 3)
+
+        grid = F.affine_grid(theta, input.size())
+        input = F.grid_sample(input, grid)
+
+        return input
+
+
+class ConvModule(nn.Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, pool_stride, dropout, bias=False):
+        super(ConvModule, self).__init__()
+
+        self.function = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=pool_stride, padding=1),
+            nn.Dropout2d(p=dropout, inplace=True)
+        )
+
+    def forward(self, input):
+        return self.function(input)
+
+
 class NumberNet(nn.Module):
     
-    def __init__(self):
+    def __init__(self, dropout=0.2):
         super(NumberNet, self).__init__()
 
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=48, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn1 = nn.BatchNorm2d(48)
-        self.conv2 = nn.Conv2d(in_channels=48, out_channels=64, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.conv4 = nn.Conv2d(in_channels=128, out_channels=160, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn4 = nn.BatchNorm2d(160)
-        self.conv5 = nn.Conv2d(in_channels=160, out_channels=192, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn5 = nn.BatchNorm2d(192)
-        self.conv6 = nn.Conv2d(in_channels=192, out_channels=192, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn6 = nn.BatchNorm2d(192)
-        self.conv7 = nn.Conv2d(in_channels=192, out_channels=192, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn7 = nn.BatchNorm2d(192)
-        self.conv8 = nn.Conv2d(in_channels=192, out_channels=192, kernel_size=5, stride=1, padding=2, bias=False)
-        self.bn8 = nn.BatchNorm2d(192)
+        self.stn = STN()
+
+        self.conv1 = ConvModule(in_channels=3, out_channels=48, kernel_size=5, stride=1,
+                                padding=2, pool_stride=2, dropout=0, bias=False)
+        self.conv2 = ConvModule(in_channels=48, out_channels=64, kernel_size=5, stride=1,
+                                padding=2, pool_stride=1, dropout=0, bias=False)
+        self.conv3 = ConvModule(in_channels=64, out_channels=128, kernel_size=5, stride=1,
+                                padding=2, pool_stride=2, dropout=0, bias=False)
+        self.conv4 = ConvModule(in_channels=128, out_channels=160, kernel_size=5, stride=1,
+                                padding=2, pool_stride=1, dropout=dropout, bias=False)
+        self.conv5 = ConvModule(in_channels=160, out_channels=192, kernel_size=5, stride=1,
+                                padding=2, pool_stride=2, dropout=0, bias=False)
+        self.conv6 = ConvModule(in_channels=192, out_channels=192, kernel_size=5, stride=1,
+                                padding=2, pool_stride=1, dropout=0, bias=False)
+        self.conv7 = ConvModule(in_channels=192, out_channels=192, kernel_size=5, stride=1,
+                                padding=2, pool_stride=2, dropout=0, bias=False)
+        self.conv8 = ConvModule(in_channels=192, out_channels=192, kernel_size=5, stride=1,
+                                padding=2, pool_stride=1, dropout=dropout, bias=False)
 
         self.fc1 = nn.Linear(in_features=3072, out_features=3072, bias=True)
         self.fc2 = nn.Linear(in_features=3072, out_features=3072, bias=True)
 
-        self.len = nn.Linear(in_features=3072, out_features=7, bias=True)
+        self.len = nn.Linear(in_features=3072, out_features=6, bias=True)
         self.digit1 = nn.Linear(in_features=3072, out_features=11, bias=True)
         self.digit2 = nn.Linear(in_features=3072, out_features=11, bias=True)
         self.digit3 = nn.Linear(in_features=3072, out_features=11, bias=True)
         self.digit4 = nn.Linear(in_features=3072, out_features=11, bias=True)
         self.digit5 = nn.Linear(in_features=3072, out_features=11, bias=True)
 
-        self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
         self._init_weight()
 
     def forward(self, input):
-        conv = self.conv1(input)
-        bn = self.bn1(conv)
-        relu = self.max_pool(F.relu(bn, inplace=True))
 
-        conv = self.conv2(relu)
-        bn = self.bn2(conv)
-        relu = F.relu(bn, inplace=True)
+        input = self.stn(input)
 
-        conv = self.conv3(relu)
-        bn = self.bn3(conv)
-        relu = self.max_pool(F.relu(bn, inplace=True))
+        conv1 = self.conv1(input)
+        conv2 = self.conv2(conv1)
+        conv3 = self.conv3(conv2)
+        conv4 = self.conv4(conv3)
+        conv5 = self.conv5(conv4)
+        conv6 = self.conv6(conv5)
+        conv7 = self.conv7(conv6)
+        conv8 = self.conv8(conv7)
 
-        conv = self.conv4(relu)
-        bn = self.bn4(conv)
-        relu = F.relu(bn, inplace=True)
-
-        conv = self.conv5(relu)
-        bn = self.bn5(conv)
-        relu = self.max_pool(F.relu(bn, inplace=True))
-
-        conv = self.conv6(relu)
-        bn = self.bn6(conv)
-        relu = F.relu(bn, inplace=True)
-
-        conv = self.conv7(relu)
-        bn = self.bn7(conv)
-        relu = self.max_pool(F.relu(bn, inplace=True))
-
-        conv = self.conv8(relu)
-        bn = self.bn8(conv)
-        relu = F.relu(bn, inplace=True)
-
-        reshape = torch.reshape(relu, (relu.shape[0], -1))
-
-        fc1 = self.fc1(reshape)
+        fc1 = self.fc1(torch.reshape(conv8, (conv8.shape[0], -1)))
         fc2 = self.fc2(fc1)
 
         l = self.len(fc2)
